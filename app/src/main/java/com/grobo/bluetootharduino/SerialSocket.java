@@ -28,7 +28,7 @@ class SerialSocket implements Runnable {
         disconnectBroadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                if(listener != null)
+                if (listener != null)
                     listener.onSerialIoError(new IOException("background disconnect"));
                 disconnect(); // disconnect now, else would be queued until UI re-attached
             }
@@ -39,7 +39,7 @@ class SerialSocket implements Runnable {
      * connect-success and most connect-errors are returned asynchronously to listener
      */
     void connect(Context context, SerialListener listener, BluetoothDevice device) throws IOException {
-        if(connected || socket != null)
+        if (connected || socket != null)
             throw new IOException("already connected");
         this.context = context;
         this.listener = listener;
@@ -51,7 +51,7 @@ class SerialSocket implements Runnable {
     void disconnect() {
         listener = null; // ignore remaining data and errors
         // connected = false; // run loop will reset connected
-        if(socket != null) {
+        if (socket != null) {
             try {
                 socket.close();
             } catch (Exception ignored) {
@@ -75,10 +75,10 @@ class SerialSocket implements Runnable {
         try {
             socket = device.createRfcommSocketToServiceRecord(BLUETOOTH_SPP);
             socket.connect();
-            if(listener != null)
+            if (listener != null)
                 listener.onSerialConnect();
         } catch (Exception e) {
-            if(listener != null)
+            if (listener != null)
                 listener.onSerialConnectError(e);
             try {
                 socket.close();
@@ -95,7 +95,7 @@ class SerialSocket implements Runnable {
             while (true) {
                 len = socket.getInputStream().read(buffer);
                 byte[] data = Arrays.copyOf(buffer, len);
-                if(listener != null)
+                if (listener != null)
                     listener.onSerialRead(data);
             }
         } catch (Exception e) {
@@ -109,5 +109,4 @@ class SerialSocket implements Runnable {
             socket = null;
         }
     }
-
 }

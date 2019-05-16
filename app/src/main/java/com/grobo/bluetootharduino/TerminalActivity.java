@@ -1,27 +1,29 @@
 package com.grobo.bluetootharduino;
 
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.ActivityNotFoundException;
-import android.content.ComponentName;
-import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.os.IBinder;
+import android.graphics.Typeface;
+import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.speech.RecognizerIntent;
+import android.support.design.widget.Snackbar;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,13 +33,15 @@ import java.util.Locale;
 
 import static com.grobo.bluetootharduino.DeviceList.EXTRA_ADDRESS;
 
-public class TerminalActivity extends AppCompatActivity implements  SerialListener {
+public class TerminalActivity extends AppCompatActivity implements SerialListener {
 
-    private enum Connected { False, Pending, True }
+    private enum Connected {False, Pending, True}
+
     private final int REQ_CODE_SPEECH_INPUT = 100;
+    public static final String EXTRA_LOG = "stored_log";
 
     private String deviceAddress;
-    private String newline = "\r\n";
+    private String newline = "#";
 
     private TextView receiveText;
 
@@ -54,7 +58,7 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
 
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
 
-        if (getIntent().getExtras() != null) {
+        if (getIntent().getExtras() != null && getIntent().getExtras().containsKey(EXTRA_ADDRESS)) {
             deviceAddress = getIntent().getExtras().getString(EXTRA_ADDRESS);
         } else {
             deviceAddress = prefs.getString(EXTRA_ADDRESS, "");
@@ -64,17 +68,26 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
             }
         }
 
-        receiveText = findViewById(R.id.receive_text);                          // TextView performance decreases with number of spans
-        receiveText.setTextColor(Color.parseColor("#4444cc")); // set as default color to reduce number of spans
+        receiveText = findViewById(R.id.receive_text);
+        receiveText.setTextColor(Color.parseColor("#4444cc"));
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                receiveText.setText(prefs.getString(EXTRA_LOG, ""));
+            }
+        });
+
         final TextView sendText = findViewById(R.id.send_text);
 
         ImageButton sendBtn = findViewById(R.id.send_btn);
         sendBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                send(sendText.getText().toString());
-                sendText.setText("");
+                if (!sendText.getText().toString().isEmpty()) {
+                    send(sendText.getText().toString());
+                    sendText.setText("");
+                }
             }
         });
 
@@ -85,24 +98,27 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
                 promptSpeechInput();
             }
         });
-
-        ImageButton devices = findViewById(R.id.device_list_btn);
-        devices.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                goToDeviceList();
-            }
-        });
-
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        if(initialStart) {
+
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+
+        if (adapter == null || !getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)) {
+            Toast.makeText(getApplicationContext(), "Bluetooth Device Not Available", Toast.LENGTH_LONG).show();
+        } else if (!adapter.isEnabled()) {
+            Intent bluetoothOn = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(bluetoothOn, 1);
+        }
+
+        if (initialStart || connected == Connected.False) {
             initialStart = false;
             connect();
         }
+
+
     }
 
     private void connect() {
@@ -110,7 +126,7 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
             String deviceName = device.getName() != null ? device.getName() : device.getAddress();
-            status("connecting...");
+            status(deviceName + " Connecting...");
             connected = Connected.Pending;
             socket = new SerialSocket();
             socket.connect(this, this, device);
@@ -119,46 +135,71 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
         }
     }
 
-    private void send(String str) {
-        if(connected != Connected.True) {
+    private void send(final String str) {
+        if (connected != Connected.True) {
             Toast.makeText(this, "not connected", Toast.LENGTH_SHORT).show();
             return;
         }
         try {
-            SpannableStringBuilder spn = new SpannableStringBuilder("YOU: " + str + '\n');
-            spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_blue_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            receiveText.append(spn);
-            byte[] data = (str + newline).getBytes();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    SpannableStringBuilder spn = new SpannableStringBuilder("YOU: " + str + '\n');
+                    spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_blue_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    spn.setSpan(new StyleSpan(Typeface.BOLD), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+                    receiveText.append(spn);
+                }
+            });
+
+            byte[] data = (str.toLowerCase() + newline).getBytes();
             socket.write(data);
         } catch (Exception e) {
             onSerialIoError(e);
         }
     }
 
-    private void receive(byte[] data) {
-        SpannableStringBuilder spn = new SpannableStringBuilder(new String(data));
-        spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_green_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        receiveText.append(spn);
+    private void receive(final byte[] data) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                SpannableStringBuilder spn = new SpannableStringBuilder(new String(data));
+                spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_green_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                receiveText.append(spn);
+            }
+        });
     }
 
-    private void status(String str) {
-        SpannableStringBuilder spn = new SpannableStringBuilder(str+'\n');
-        spn.setSpan(new ForegroundColorSpan(Color.parseColor("#FFDB58")), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        receiveText.append(spn);
+    private void status(final String str) {
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                SpannableStringBuilder spn = new SpannableStringBuilder(str + '\n');
+                spn.setSpan(new ForegroundColorSpan(Color.parseColor("#FFDB58")), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                receiveText.append(spn);
+            }
+        });
     }
-
-
 
     @Override
     public void onSerialConnect() {
-        status("connected");
+        status("Connected");
         connected = Connected.True;
     }
 
     @Override
     public void onSerialConnectError(Exception e) {
-        status("connection failed: " + e.getMessage());
+        status("Connection failed: " + e.getMessage());
         disconnect();
+        Snackbar.make(findViewById(R.id.parent_activity_terminal), "Connection failed", Snackbar.LENGTH_LONG)
+                .setAction("retry", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        connect();
+                    }
+                })
+                .show();
     }
 
     @Override
@@ -168,8 +209,9 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
 
     @Override
     public void onSerialIoError(Exception e) {
-        status("connection lost: " + e.getMessage());
+        status("Connection lost: " + e.getMessage());
         disconnect();
+        connect();
     }
 
     private void promptSpeechInput() {
@@ -189,27 +231,12 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        switch (requestCode) {
-            case REQ_CODE_SPEECH_INPUT: {
-                if (resultCode == RESULT_OK && null != data) {
-                    ArrayList<String> result = data
-                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-                    checkSpeechInput(result.get(0));
-                }
-                break;
+        if (requestCode == REQ_CODE_SPEECH_INPUT) {
+            if (resultCode == RESULT_OK && null != data) {
+                ArrayList<String> result = data
+                        .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                send(result.get(0).toLowerCase());
             }
-        }
-    }
-
-    private void checkSpeechInput(String input) {
-        SpannableStringBuilder spn = new SpannableStringBuilder("YOU: " + input + "\n");
-        spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_blue_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        receiveText.append(spn);
-
-        if (input.toLowerCase().equals("turn on")){
-            send("1");
-        } else if (input.toLowerCase().equals("turn off")){
-            send("0");
         }
     }
 
@@ -217,6 +244,7 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
     protected void onDestroy() {
         super.onDestroy();
         disconnect();
+        prefs.edit().putString(EXTRA_LOG, receiveText.getText().toString() + "\n").apply();
     }
 
     private void disconnect() {
@@ -224,12 +252,82 @@ public class TerminalActivity extends AppCompatActivity implements  SerialListen
             connected = Connected.False;
             socket.disconnect();
             socket = null;
+
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    receiveText.append("Disconnected\n");
+                }
+            });
         }
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.terminal_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+
+            case R.id.action_clear_log:
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setTitle("Clear ?");
+                builder.setMessage("This will clear your logs");
+                builder.setPositiveButton("Clear", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        receiveText.setText("");
+                        prefs.edit().putString(EXTRA_LOG, receiveText.getText().toString() + "\n").apply();
+                    }
+                });
+                builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        if (dialog != null) {
+                            dialog.dismiss();
+                        }
+                    }
+                });
+                AlertDialog alertDialog = builder.create();
+                alertDialog.show();
+                break;
+
+            case R.id.action_device_list:
+                goToDeviceList();
+                break;
+        }
+        return true;
     }
 
     private void goToDeviceList() {
         disconnect();
         startActivity(new Intent(this, DeviceList.class));
         finish();
+    }
+
+    @Override
+    public void onBackPressed() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Exit ?");
+        builder.setMessage("This will end your connection");
+        builder.setPositiveButton("Exit", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                TerminalActivity.super.onBackPressed();
+            }
+        });
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int id) {
+                if (dialog != null) {
+                    dialog.dismiss();
+                }
+            }
+        });
+
+        AlertDialog alertDialog = builder.create();
+        alertDialog.show();
     }
 }

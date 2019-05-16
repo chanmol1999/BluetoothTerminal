@@ -1,27 +1,49 @@
-/* 
- *  Bluetooh Basic: LED ON OFF - Avishkar
- *  Coder - Mayoogh Girish
- *  Website - http://bit.do/Avishkar
- *  Download the App : 
- *  This program lets you to control a LED on pin 13 of arduino using a bluetooth module
- */
-char Incoming_value = 0;                //Variable for storing Incoming_value
-void setup() 
-{
-  Serial.begin(9600);         //Sets the data rate in bits per second (baud) for serial data transmission
-  pinMode(13, OUTPUT);        //Sets digital pin 13 as output pin
+#include <SoftwareSerial.h>
+
+SoftwareSerial bluetooth(10, 11); // RX, TX
+int LED = 13; // the on-board LED
+char data; // the data received
+String command;
+
+void setup() {
+  bluetooth.begin(9600);
+  Serial.begin(9600);
+  Serial.println("Waiting for command...");
+  bluetooth.println("Send 'turn on' to turn on the LED. Send 'turn off' to turn Off");
+  pinMode(LED, OUTPUT);
 }
-void loop()
-{
-  if(Serial.available() > 0)  
-  {
-    Incoming_value = Serial.read();      //Read the incoming data and store it into variable Incoming_value
-    Serial.print(Incoming_value);        //Print Value of Incoming_value in Serial monitor
-    Serial.print("\n");        //New line 
-    if(Incoming_value == '1')            //Checks whether value of Incoming_value is equal to 1 
-      digitalWrite(13, HIGH);  //If value is 1 then LED turns ON
-    else if(Incoming_value == '0')       //Checks whether value of Incoming_value is equal to 0
-      digitalWrite(13, LOW);   //If value is 0 then LED turns OFF
-  }                            
- 
-}                 
+
+void loop() {
+  if (bluetooth.available()) { //wait for data received
+
+    while (true) {
+      data = bluetooth.read();
+      if (data == '#') break;
+      command = command + data;
+    }
+
+    if (command == "turn on") {
+
+      digitalWrite(LED, 1);
+      Serial.println("LED On !");
+      bluetooth.println("LED On !");
+
+    } else if (command == "turn off") {
+
+      digitalWrite(LED, 0);
+      Serial.println("LED Off !");
+      bluetooth.println("LED Off ! ");
+
+    } else if (command == "hello" || command == "hi") {
+
+      bluetooth.println("Hi there, this is Arduino !");
+
+    } else {
+
+      bluetooth.println("Sorry, I don't understand !");
+
+    }
+  }
+  command = "";
+  delay(100);
+}
