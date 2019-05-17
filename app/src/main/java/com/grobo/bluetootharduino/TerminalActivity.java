@@ -281,7 +281,7 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         receiveText.setText("");
-                        prefs.edit().putString(EXTRA_LOG, receiveText.getText().toString() + "\n").apply();
+                        prefs.edit().putString(EXTRA_LOG, "").apply();
                     }
                 });
                 builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
