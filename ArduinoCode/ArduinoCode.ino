@@ -1,6 +1,6 @@
 #include <SoftwareSerial.h>
 
-SoftwareSerial bluetooth(10, 11); // RX, TX
+SoftwareSerial bluetooth(10, 11); // RX, TX   11: RX of HC05; 10: TX of HC05
 int LED = 13; // the on-board LED
 char data; // the data received
 String command;
@@ -20,6 +20,7 @@ void loop() {
       data = bluetooth.read();
       if (data == '#') break;
       command = command + data;
+      delay(1);
     }
 
     if (command == "turn on") {
@@ -37,6 +38,10 @@ void loop() {
     } else if (command == "hello" || command == "hi") {
 
       bluetooth.println("Hi there, this is Arduino !");
+
+    }  else if (command == "how are you?" || command == "how are you") {
+
+      bluetooth.println("I'm fine, you can now give commands");
 
     } else {
 
