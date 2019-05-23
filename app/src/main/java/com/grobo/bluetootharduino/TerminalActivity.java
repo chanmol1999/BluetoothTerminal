@@ -12,14 +12,18 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.speech.RecognizerIntent;
+import android.speech.tts.TextToSpeech;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.text.Editable;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
+import android.text.TextWatcher;
 import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -39,6 +43,7 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
 
     private final int REQ_CODE_SPEECH_INPUT = 100;
     public static final String EXTRA_LOG = "stored_log";
+    private static final String TTS_SPEAK_ID = "SPEAK";
 
     private String deviceAddress;
     private String newline = "#";
@@ -50,6 +55,8 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
     private Connected connected = Connected.False;
 
     private SharedPreferences prefs;
+    TextToSpeech tts;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,6 +103,27 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
             @Override
             public void onClick(View v) {
                 promptSpeechInput();
+            }
+        });
+
+        tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == TextToSpeech.SUCCESS) {
+
+                    int result = tts.setLanguage(new Locale("en-in"));
+
+                    if (result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.e("TTS", "This Language is not supported");
+                    } else if (result == TextToSpeech.LANG_MISSING_DATA) {
+                        Log.e("TTS", "This Language is missing data");
+                    }
+                    tts.setPitch(1.0f);
+                    tts.setSpeechRate(0.8f);
+
+                } else {
+                    Log.e("TTS", "Initialization Failed!");
+                }
             }
         });
     }
@@ -166,6 +194,7 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
                 SpannableStringBuilder spn = new SpannableStringBuilder(new String(data));
                 spn.setSpan(new ForegroundColorSpan(getResources().getColor(android.R.color.holo_green_dark)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
                 receiveText.append(spn);
+                tts.speak(new String(data), TextToSpeech.QUEUE_FLUSH, null, TTS_SPEAK_ID);
             }
         });
     }
@@ -281,7 +310,7 @@ public class TerminalActivity extends AppCompatActivity implements SerialListene
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         receiveText.setText("");
-                        prefs.edit().putString(EXTRA_LOG, receiveText.getText().toString() + "\n").apply();
+                        prefs.edit().putString(EXTRA_LOG, "").apply();
                     }
                 });
                 builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
